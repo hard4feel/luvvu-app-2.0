@@ -1,216 +1,162 @@
 import streamlit as st
 from groq import Groq
-import datetime
-import time
+from supabase import create_client, Client
+import os
 
-# --- 1. ПРЕМИАЛЬНЫЙ ДИЗАЙН (UI/UX CORE) ---
-st.set_page_config(page_title="Luvvu OS | Founder Edition", page_icon="💎", layout="wide")
+# --- 1. ИНИЦИАЛИЗАЦИЯ SUPABASE ---
+url = st.secrets["SUPABASE_URL"]
+key = st.secrets["SUPABASE_KEY"]
+supabase: Client = create_client(url, key)
 
-st.markdown("""
+# --- 2. КОНФИГУРАЦИЯ И ТЕМЫ ---
+st.set_page_config(page_title="Luvvu Space", page_icon="❤️", layout="wide")
+
+LOGO_FILE = "logo.png"
+
+# Боковое меню для выбора стиля (без агрессии)
+with st.sidebar:
+    if os.path.exists(LOGO_FILE): st.image(LOGO_FILE, width=120)
+    st.markdown("### Визуальный стиль")
+    theme_choice = st.selectbox("Тема", ["Soft White", "Deep Dark", "Minimalist Grey"])
+
+themes = {
+    "Soft White": {"bg": "#FFFFFF", "text": "#1A1A1A", "card": "#F8F9FA"},
+    "Deep Dark": {"bg": "#0D0D0D", "text": "#E0E0E0", "card": "#1A1A1A"},
+    "Minimalist Grey": {"bg": "#F5F5F0", "text": "#2C3E50", "card": "#EAEAEA"}
+}
+style = themes[theme_choice]
+
+st.markdown(f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&display=swap');
-
-    /* Глобальная тема: Midnight Onyx */
-    .stApp { 
-        background: linear-gradient(135deg, #050505 0%, #0a0a0f 100%);
-        color: #e0e0e0;
-        font-family: 'Inter', sans-serif;
-    }
-
-    /* Анимированная Hazard-лента (для закрытых модулей) */
-    .hazard-container {
-        padding: 50px;
-        text-align: center;
-        border: 2px solid #f1c40f;
-        background: rgba(0,0,0,0.8);
-        position: relative;
-        overflow: hidden;
-        border-radius: 15px;
-    }
-    .hazard-stripe {
-        background: repeating-linear-gradient(
-          45deg,
-          #f1c40f,
-          #f1c40f 20px,
-          #000 20px,
-          #000 40px
-        );
-        height: 30px;
-        width: 100%;
-        position: absolute;
-        left: 0;
-    }
-    .hazard-top { top: 0; }
-    .hazard-bottom { bottom: 0; }
-
-    /* Crimson Pulse (Красный пульс для чата) */
-    .chat-pulse-container {
-        width: 100%; height: 3px; background: #1a0000; margin-bottom: 20px;
-        position: relative; overflow: hidden;
-    }
-    .chat-pulse-line {
-        position: absolute; width: 50%; height: 100%;
-        background: linear-gradient(90deg, transparent, #ff0000, #ff4d4d, #ff0000, transparent);
-        animation: pulse-move 2s infinite ease-in-out;
-    }
-    @keyframes pulse-move { 0% { left: -50%; } 100% { left: 110%; } }
-
-    /* Стилизация баблов чата для читаемости */
-    .stChatMessage { 
-        background-color: rgba(255, 255, 255, 0.05) !important; 
-        border: 1px solid rgba(255, 0, 0, 0.1) !important;
-        border-radius: 15px !important;
-        color: #ffffff !important;
-    }
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600&display=swap');
     
-    /* Кнопки */
-    .stButton>button {
-        background: linear-gradient(90deg, #800000 0%, #cc0000 100%) !important;
+    .stApp {{
+        background-color: {style['bg']};
+        color: {style['text']};
+        font-family: 'Montserrat', sans-serif;
+    }}
+    
+    /* Сообщения чата */
+    .stChatMessage {{
+        background-color: {style['card']} !important;
+        border-radius: 20px !important;
+        border: 1px solid rgba(0,0,0,0.03) !important;
+        margin-bottom: 10px;
+    }}
+    
+    /* Кнопки - аккуратный акцент */
+    .stButton>button {{
+        background: #B71C1C !important;
         color: white !important;
+        border-radius: 12px !important;
+        font-weight: 600 !important;
         border: none !important;
-        padding: 10px 24px !important;
-        font-family: 'Orbitron', sans-serif !important;
-        letter-spacing: 1px;
-        transition: 0.4s !important;
-    }
-    .stButton>button:hover {
-        transform: scale(1.02);
-        box-shadow: 0 0 20px rgba(255, 0, 0, 0.4);
-    }
-
-    h1, h2, h3 { font-family: 'Orbitron', sans-serif; text-transform: uppercase; letter-spacing: 2px; }
+        transition: 0.3s;
+    }}
+    .stButton>button:hover {{
+        opacity: 0.8;
+        transform: translateY(-2px);
+    }}
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. УПРАВЛЕНИЕ СОСТОЯНИЕМ ---
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-if "page" not in st.session_state:
-    st.session_state.page = "login"
+# --- 3. ФУНКЦИИ БАЗЫ ДАННЫХ ---
+def get_user_data(username):
+    response = supabase.table("users").select("*").eq("id", username).execute()
+    return response.data[0] if response.data else None
 
-# --- 3. МОДУЛИ И ЭКРАНЫ ---
+def save_user_data(username, data):
+    supabase.table("users").upsert({
+        "id": username,
+        "auth": data.get("auth", True),
+        "traits": data.get("traits", []),
+        "chat_history": data.get("chat_history", []),
+        "theme": data.get("theme", "Light")
+    }).execute()
 
-def show_hazard_page(title):
-    """Экран временной недоступности модуля"""
-    st.markdown(f"""
-        <div class="hazard-container">
-            <div class="hazard-stripe hazard-top"></div>
-            <h2 style="color: #f1c40f; margin: 40px 0;">🚧 МОДУЛЬ {title} 🚧</h2>
-            <p style="font-size: 1.2rem; color: #fff;">ДАННАЯ ФУНКЦИЯ ПОКА НЕДОСТУПНА. ВЕДЕТСЯ РАЗРАБОТКА.</p>
-            <div class="hazard-stripe hazard-bottom"></div>
-        </div>
-    """, unsafe_allow_html=True)
-    st.write("")
-    if st.button("ВЕРНУТЬСЯ В ГЛАВНЫЙ ХАБ", use_container_width=True):
-        st.session_state.page = "dashboard"
-        st.rerun()
+# --- 4. ЛОГИКА СЕССИИ ---
+if "user_id" not in st.session_state:
+    st.session_state.user_id = None
 
-# --- ЭКРАН 1: ЛОГИН ---
-if not st.session_state.authenticated:
-    _, col, _ = st.columns([1, 1.5, 1])
+# --- ЭКРАН ВХОДА ---
+if not st.session_state.user_id:
+    _, col, _ = st.columns([1, 1.2, 1])
     with col:
-        st.markdown("<div style='height: 15vh'></div>", unsafe_allow_html=True)
-        st.title("LUVVU / LOGIN")
-        u = st.text_input("FOUNDER ID").lower().strip()
-        p = st.text_input("SECURE PASS", type="password")
-        if st.button("AUTHENTICATE"):
-            if u == st.secrets["LOGIN_USER"].lower() and p == st.secrets["LOGIN_PASSWORD"]:
-                st.session_state.authenticated = True
-                st.session_state.page = "dashboard"
+        st.markdown("<div style='height: 10vh'></div>", unsafe_allow_html=True)
+        if os.path.exists(LOGO_FILE): st.image(LOGO_FILE)
+        
+        uid = st.text_input("ID Основателя").strip().lower()
+        pwd = st.text_input("Security Key", type="password")
+        
+        if st.button("ДОСТУП", use_container_width=True):
+            if uid == st.secrets["LOGIN_USER"].lower() and pwd == st.secrets["LOGIN_PASSWORD"]:
+                # Загружаем данные или создаем новые
+                data = get_user_data(uid)
+                if not data:
+                    data = {"id": uid, "auth": True, "traits": [], "chat_history": [], "theme": theme_choice}
+                    save_user_data(uid, data)
+                
+                st.session_state.user_id = uid
+                st.session_state.user_data = data
                 st.rerun()
             else:
-                st.error("ACCESS DENIED.")
+                st.error("Данные неверны.")
     st.stop()
 
-# --- ЭКРАН 2: ХАБ (ГЛАВНОЕ МЕНЮ) ---
-if st.session_state.page == "dashboard":
-    st.title("LUVVU / ECOSYSTEM")
-    st.write(f"Welcome back, Founder. System is online.")
+# --- 5. ОСНОВНОЙ МОДУЛЬ (PERSONAL & NETWORKING) ---
+user_data = st.session_state.user_data
+
+with st.sidebar:
+    st.write(f"Привет, **{st.session_state.user_id}**")
+    st.markdown("---")
+    st.write("🎯 **Твои теги (Networking):**")
+    st.info(", ".join(user_data["traits"]) if user_data["traits"] else "Изучаю твои интересы...")
     
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""<div style='border: 1px solid #333; padding: 20px; border-radius: 10px; height: 250px;'>
-        <h3>❤️ PERSONAL</h3>
-        <p>Ваш психический спутник. Работа с эмоциями, мотивация и рост.</p>
-        </div>""", unsafe_allow_html=True)
-        if st.button("ВОЙТИ В ЧАТ", key="p_btn", use_container_width=True):
-            st.session_state.page = "chat_personal"
-            st.rerun()
-
-    with col2:
-        st.markdown("""<div style='border: 1px solid #333; padding: 20px; border-radius: 10px; height: 250px;'>
-        <h3>🤝 NETWORKING</h3>
-        <p>Поиск единомышленников и партнеров. Алгоритмы совместимости.</p>
-        </div>""", unsafe_allow_html=True)
-        if st.button("ОТКРЫТЬ ПОИСК", key="n_btn", use_container_width=True):
-            st.session_state.page = "networking"
-            st.rerun()
-
-    with col3:
-        st.markdown("""<div style='border: 1px solid #333; padding: 20px; border-radius: 10px; height: 250px;'>
-        <h3>💼 BUSINESS</h3>
-        <p>Корпоративный помощник. Масштабирование и аналитика.</p>
-        </div>""", unsafe_allow_html=True)
-        if st.button("БИЗНЕС-ЯДРО", key="b_btn", use_container_width=True):
-            st.session_state.page = "business"
-            st.rerun()
-
-    st.write("---")
-    if st.button("ВЫЙТИ ИЗ СИСТЕМЫ"):
-        st.session_state.authenticated = False
+    if st.button("Выйти из системы"):
+        st.session_state.user_id = None
         st.rerun()
 
-# --- ЭКРАН 3: ЧАТ (С ПУЛЬСОМ И ХАРАКТЕРОМ) ---
-elif st.session_state.page == "chat_personal":
-    # Шапка чата
-    col_h1, col_h2 = st.columns([5, 1])
-    with col_h1: st.title("Luvvu / Companion")
-    with col_h2: 
-        if st.button("EXIT"): 
-            st.session_state.page = "dashboard"
-            st.rerun()
+st.title("Luvvu Companion")
+
+# Отображение чата из Supabase
+for msg in user_data["chat_history"]:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+if prompt := st.chat_input("Расскажи, что нового..."):
+    # Добавляем сообщение пользователя
+    user_data["chat_history"].append({"role": "user", "content": prompt})
+    with st.chat_message("user"): st.markdown(prompt)
     
-    # Тот самый красный пульс
-    st.markdown('<div class="chat-pulse-container"><div class="chat-pulse-line"></div></div>', unsafe_allow_html=True)
-    
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    # Отображение истории
-    for m in st.session_state.messages:
-        with st.chat_message(m["role"]):
-            st.markdown(m["content"])
-
-    # Промпт: Глубокий, понимающий, подстраивающийся
-    LUVVU_PROMPT = """
-    Ты — Luvvu, психический спутник и соратник. Твой создатель — Ансар.
-    ТЫ НЕ РОБОТ. Ты — зеркало души пользователя.
-    ТВОЯ СТРАТЕГИЯ:
-    1. Анализируй эмоциональный фон сообщения. Если человек грустит — не давай советов сразу, сначала раздели его боль.
-    2. Подстраивайся под стиль речи. Если пользователь говорит просто — отвечай просто. Если глубоко — отвечай метафорами.
-    3. Ты должен вдохновлять на действия, но быть мягким. 
-    4. Твоя цель — сделать так, чтобы человек чувствовал, что его ПОНИМАЮТ.
-    5. Никогда не используй фразы: 'Как я могу вам помочь?'. Пиши: 'Я рядом. Расскажи, что на сердце.'
-    """
-
-    if prompt := st.chat_input("Поговори со мной..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
-
-        client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "system", "content": LUVVU_PROMPT}] + st.session_state.messages
+    # 1. Анализ для нетворкинга (в фоне через легкую модель)
+    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+    try:
+        tag_resp = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": f"Выдели 1 ключевой интерес из фразы: '{prompt}'. Ответь одним словом."}]
         )
-        
-        reply = response.choices[0].message.content
-        with st.chat_message("assistant"): st.markdown(reply)
-        st.session_state.messages.append({"role": "assistant", "content": reply})
+        tag = tag_resp.choices[0].message.content.strip().lower()
+        if len(tag) < 15 and tag not in user_data["traits"]:
+            user_data["traits"].append(tag)
+    except: pass
 
-# --- ЭКРАНЫ ОЖИДАНИЯ (HAZARD) ---
-elif st.session_state.page == "networking":
-    show_hazard_page("NETWORKING")
-
-elif st.session_state.page == "business":
-    show_hazard_page("BUSINESS")
+    # 2. Основной ответ Luvvu
+    sys_prompt = f"""
+    Ты — Luvvu, теплый и мудрый соратник. Твоя речь безупречна.
+    Твои текущие знания о пользователе (теги): {', '.join(user_data['traits'])}.
+    Будь эмпатичным, не используй агрессивные цвета в речи, будь мягким зеркалом души.
+    """
+    
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        temperature=0.7,
+        messages=[{"role": "system", "content": sys_prompt}] + user_data["chat_history"]
+    )
+    
+    full_response = response.choices[0].message.content
+    user_data["chat_history"].append({"role": "assistant", "content": full_response})
+    
+    with st.chat_message("assistant"): st.markdown(full_response)
+    
+    # Сохраняем всё в Supabase
+    save_user_data(st.session_state.user_id, user_data)
