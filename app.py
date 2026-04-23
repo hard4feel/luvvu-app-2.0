@@ -3,150 +3,182 @@ from groq import Groq
 from supabase import create_client, Client
 import os
 
-# --- 1. ТЕХНИЧЕСКАЯ ЧАСТЬ ---
+# --- 1. CONNECTIVITY ---
 try:
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 except:
-    st.error("Ошибка подключения. Проверь Secrets.")
+    st.error("Check your Secrets.")
 
-# --- 2. ДИЗАЙН "WARM MINIMALISM" ---
-st.set_page_config(page_title="Luvvu Space", page_icon="🤍", layout="centered")
+# --- 2. THE BLACKOUT UI (MINIMALISM) ---
+st.set_page_config(page_title="Luvvu Terminal", page_icon="⚫", layout="wide")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700&family=JetBrains+Mono&display=swap');
     
-    /* Основной фон - мягкий и теплый */
+    /* Глобальные стили */
     .stApp {
-        background-color: #FDFDFB !important;
-        color: #2D2D2D !important;
+        background-color: #000000 !important;
+        color: #FFFFFF !important;
         font-family: 'Inter', sans-serif;
     }
 
     header, footer { visibility: hidden; }
 
-    /* Контейнер чата */
-    .stChatMessage {
-        background-color: #FFFFFF !important;
-        border: 1px solid #F0F0EE !important;
-        border-radius: 24px !important;
-        padding: 20px !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.02) !important;
-        margin-bottom: 12px !important;
-    }
-
-    /* Кнопки - мягкий акцент */
-    .stButton>button {
+    /* Эффект пульса на фоне */
+    .pulse-bg {
+        position: fixed;
+        top: 50%;
+        left: 0;
         width: 100%;
-        background-color: #1A1A1A !important;
-        color: #FFFFFF !important;
-        border-radius: 16px !important;
-        padding: 12px !important;
-        font-weight: 500 !important;
-        border: none !important;
-        transition: 0.3s ease;
-    }
-    .stButton>button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        height: 1px;
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        animation: pulse 4s infinite ease-in-out;
+        z-index: -1;
     }
 
-    /* Инпут */
+    @keyframes pulse {
+        0% { opacity: 0.1; transform: scaleX(0.8); }
+        50% { opacity: 0.5; transform: scaleX(1); }
+        100% { opacity: 0.1; transform: scaleX(0.8); }
+    }
+
+    /* Стиль сообщений */
+    [data-testid="stChatMessage"] {
+        background-color: transparent !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 0px !important;
+        color: #FFFFFF !important;
+        margin-bottom: 10px !important;
+    }
+
+    /* Желтая лента ремонта */
+    .caution-tape {
+        background: #ffd700;
+        color: #000;
+        padding: 5px;
+        font-weight: bold;
+        text-align: center;
+        text-transform: uppercase;
+        font-family: 'JetBrains Mono', monospace;
+        border: 2px dashed #000;
+        margin: 10px 0;
+    }
+
+    /* Поля ввода */
     .stChatInputContainer textarea {
-        border-radius: 20px !important;
-        border: 1px solid #EBEBEB !important;
+        background-color: #000 !important;
+        color: #fff !important;
+        border: 1px solid #fff !important;
+        border-radius: 0px !important;
+    }
+
+    .stButton>button {
+        background-color: #fff !important;
+        color: #000 !important;
+        border-radius: 0px !important;
+        font-weight: bold;
+        border: none !important;
     }
     </style>
+    <div class="pulse-bg"></div>
 """, unsafe_allow_html=True)
 
-# --- 3. ЛОГИКА БАЗЫ ---
-def get_data(uid):
+# --- 3. DATABASE ---
+def sync_user(uid):
     res = supabase.table("users").select("*").eq("id", uid).execute()
     return res.data[0] if res.data else None
 
-def save_data(uid, data):
+def save_user(uid, data):
     supabase.table("users").upsert({
         "id": uid,
         "traits": data.get("traits", []),
-        "chat_history": data.get("chat_history", [])
+        "chat_history": data.get("chat_history", []),
+        "auth": True
     }).execute()
 
-# --- 4. СЕССИЯ ---
+# --- 4. SESSION ---
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# Экран входа
+# ЭКРАН ВХОДА
 if st.session_state.user is None:
-    _, col, _ = st.columns([1, 2, 1])
+    _, col, _ = st.columns([1, 1.5, 1])
     with col:
-        st.markdown("<div style='height: 15vh'></div>", unsafe_allow_html=True)
-        # Логотип (если есть файл logo.jpg или png)
-        if os.path.exists("logo.jpg"): st.image("logo.jpg")
-        elif os.path.exists("logo.png"): st.image("logo.png")
-        else: st.markdown("<h2 style='text-align: center; font-weight: 300; letter-spacing: 2px;'>LUVVU</h2>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 20vh'></div>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center; letter-spacing: 15px; font-weight: 300;'>LUVVU</h1>", unsafe_allow_html=True)
         
-        uid = st.text_input("Ваш ID").strip().lower()
-        pwd = st.text_input("Пароль", type="password")
+        uid = st.text_input("ID").strip().lower()
+        pwd = st.text_input("KEY", type="password")
         
-        if st.button("Войти"):
+        if st.button("ENTER"):
             if uid == st.secrets["LOGIN_USER"].lower() and pwd == st.secrets["LOGIN_PASSWORD"]:
-                data = get_data(uid)
+                data = sync_user(uid)
                 if not data:
                     data = {"id": uid, "traits": [], "chat_history": []}
-                    save_data(uid, data)
+                    save_user(uid, data)
                 st.session_state.user = data
                 st.rerun()
     st.stop()
 
-# --- 5. ТЕРМИНАЛ ЧАТА ---
+# --- 5. MAIN SYSTEM ---
 user = st.session_state.user
 
-# Сайдбар (минималистичный)
+# Сайдбар с модулями в разработке
 with st.sidebar:
-    st.markdown("### Luvvu Profile")
-    st.write(f"ID: `{user['id']}`")
+    st.markdown("<h2 style='letter-spacing: 5px;'>LUVVU</h2>", unsafe_allow_html=True)
+    st.write(f"Active: `{user['id']}`")
     st.markdown("---")
-    st.write("✨ Интересы:")
-    for t in user["traits"]:
-        st.caption(f"• {t.capitalize()}")
     
-    if st.button("Выйти"):
+    # Модули с лентой
+    st.write("📁 MOD_BUSINESS")
+    st.markdown('<div class="caution-tape">🚧 UNDER CONSTRUCTION 🚧</div>', unsafe_allow_html=True)
+    
+    st.write("🤝 MOD_FRIENDSHIP")
+    st.markdown('<div class="caution-tape">🚧 UNDER CONSTRUCTION 🚧</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.write("🎯 TRAITS:")
+    for t in user["traits"]:
+        st.markdown(f"• `{t.upper()}`")
+    
+    if st.button("EXIT"):
         st.session_state.user = None
         st.rerun()
 
-# Основной контент
-st.markdown("<h4 style='font-weight: 400; color: #8E8E8E;'>Личный ассистент</h4>", unsafe_allow_html=True)
+# Чат
+st.markdown("<h4 style='letter-spacing: 2px; color: rgba(255,255,255,0.5);'>CORE_COMPANION_V.1</h4>", unsafe_allow_html=True)
 
 for msg in user["chat_history"]:
     with st.chat_message(msg["role"]):
-        st.write(msg["content"])
+        st.markdown(msg["content"])
 
-if prompt := st.chat_input("Напишите что-нибудь..."):
+if prompt := st.chat_input("Input command..."):
     user["chat_history"].append({"role": "user", "content": prompt})
-    with st.chat_message("user"): st.write(prompt)
+    with st.chat_message("user"): st.markdown(prompt)
 
-    # Анализ интересов
+    # Networking analysis
     try:
         tag_resp = client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": f"Extract 1 keyword from: {prompt}. One word only."}]
+            messages=[{"role": "user", "content": f"One word trait for: {prompt}"}]
         )
         tag = tag_resp.choices[0].message.content.strip().lower()
         if len(tag.split()) == 1 and tag not in user["traits"]:
             user["traits"].append(tag)
     except: pass
 
-    # Ответ Luvvu
-    sys = "Ты — Luvvu, теплый, эмпатичный и мудрый друг. Твоя речь безупречна. Никаких эмодзи."
+    # AI Response
+    sys = "Ты — Luvvu, минималистичный ИИ. Твоя речь строгая, умная, без эмодзи. Только черный и белый смысл."
     res = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "system", "content": sys}] + user["chat_history"]
     )
     
-    answer = res.choices[0].message.content
-    user["chat_history"].append({"role": "assistant", "content": answer})
-    with st.chat_message("assistant"): st.write(answer)
+    ans = res.choices[0].message.content
+    user["chat_history"].append({"role": "assistant", "content": ans})
+    with st.chat_message("assistant"): st.markdown(ans)
     
-    # Сохранение
-    save_data(user["id"], user)
+    save_user(user["id"], user)
