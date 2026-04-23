@@ -2,213 +2,191 @@ import streamlit as st
 from groq import Groq
 from supabase import create_client, Client
 import os
-import time
 
-# --- 1. ТЕХНИЧЕСКАЯ УСТАНОВКА ---
+# --- 1. CONNECTIVITY (SUPABASE & GROQ) ---
 try:
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-except: st.error("Ошибка Supabase. Проверь Secrets.")
+    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+except Exception as e:
+    st.error("Критическая ошибка подключения. Проверь Secrets в настройках Streamlit.")
 
-# --- 2. LUXURY UI & THEMING (OLD MONEY STYLE) ---
-st.set_page_config(page_title="Luvvu OS", page_icon="⚪", layout="wide")
+# --- 2. LUXURY UI (BLACK & WHITE HIGH CONTRAST) ---
+st.set_page_config(page_title="Luvvu Space", page_icon="⚫", layout="wide")
 
-# Файл логотипа
-LOGO_FILE = "logo.jpg"
+# Умный поиск логотипа
+def get_logo():
+    for ext in ["jpg", "png", "jpeg"]:
+        if os.path.exists(f"logo.{ext}"):
+            return f"logo.{ext}"
+    return "https://cdn-icons-png.flaticon.com/512/2583/2583158.png" # Элегантная иконка-заглушка
 
-# Ссылки на фоновые изображения из сети (Атмосферные, спокойные)
-BG_AUTH = "https://images.unsplash.com/photo-1506126613408-eca07ce68773?q=80&w=2670&auto=format&fit=crop" # Йога/Туман
-BG_CHAT = "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?q=80&w=2574&auto=format&fit=crop" # Глубокий космос
+LOGO_PATH = get_logo()
+
+# Боковое меню для настроек
+with st.sidebar:
+    st.markdown("### НАСТРОЙКИ СТИЛЯ")
+    ui_mode = st.radio("Цветовая схема", ["LUXURY WHITE", "TOTAL BLACK"])
+    st.markdown("---")
+
+# CSS для радикального контраста
+if ui_mode == "LUXURY WHITE":
+    bg, text, card = "#FFFFFF", "#000000", "#F2F2F2"
+else:
+    bg, text, card = "#000000", "#FFFFFF", "#1A1A1A"
 
 st.markdown(f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Montserrat:wght@300;400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700&family=Cinzel:wght@400;700&display=swap');
     
-    /* Убираем стандартные элементы Streamlit */
+    .stApp {{
+        background-color: {bg} !important;
+        color: {text} !important;
+        font-family: 'Inter', sans-serif;
+    }}
+    
     header, footer {{ visibility: hidden; }}
     
-    /* Стилизация баблов чата для читаемости на темном фоне */
-    .stChatMessage {{
-        background: rgba(255, 255, 255, 0.04) !important;
-        backdrop-filter: blur(10px) !important;
-        border: 1px solid rgba(255,255,255,0.05) !important;
-        border-radius: 20px !important;
-        color: #FFFFFF !important;
-        padding: 15px !important;
-        margin-bottom: 10px !important;
-    }}
-    
-    /* Ввод сообщения (Мобильный стайл) */
-    .stChatInputContainer {{
-        background: rgba(26,26,26,0.9) !important;
-        border: 1px solid rgba(255,255,255,0.1) !important;
-        border-radius: 20px !important;
-    }}
-    
-    /* Кнопки - акцент на премиальность */
-    .stButton>button {{
-        width: 100%;
-        background-color: #1C1C1C !important;
-        color: #F9F9F7 !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 15px !important;
-        font-family: 'Cinzel', serif;
-        letter-spacing: 2px;
-        transition: 0.4s ease;
-    }}
-    .stButton>button:hover {{
-        background-color: #4A4A4A !important;
-        box-shadow: 0 5px 15px rgba(255,0,0,0.1);
+    /* Сообщения чата */
+    [data-testid="stChatMessage"] {{
+        background-color: {card} !important;
+        border: 1px solid rgba(128,128,128,0.2) !important;
+        border-radius: 0px !important;
+        padding: 25px !important;
+        color: {text} !important;
+        margin-bottom: 15px !important;
     }}
 
-    /* Боковая панель */
-    [data-testid="stSidebar"] {{
-        background-color: #FFFFFF !important;
-        border-right: 1px solid #EAEAEA;
+    /* Поля ввода */
+    .stTextInput>div>div>input, .stChatInputContainer textarea {{
+        background-color: {bg} !important;
+        color: {text} !important;
+        border: 1px solid {text} !important;
+        border-radius: 0px !important;
+    }}
+
+    /* Кнопки */
+    .stButton>button {{
+        background-color: {text} !important;
+        color: {bg} !important;
+        border: none !important;
+        border-radius: 0px !important;
+        font-family: 'Cinzel', serif;
+        font-weight: 700;
+        letter-spacing: 2px;
+        padding: 15px !important;
+        width: 100%;
     }}
     
-    /* Адаптация под телефон */
-    @media (max-width: 600px) {{
-        h1 {{ font-size: 2rem !important; }}
-        .stChatMessage {{ padding: 10px !important; }}
+    /* Сайдбар */
+    [data-testid="stSidebar"] {{
+        background-color: {bg} !important;
+        border-right: 1px solid rgba(128,128,128,0.2);
     }}
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. ФУНКЦИИ БАЗЫ ДАННЫХ ---
-def fetch_user_state(uid):
-    try:
-        res = supabase.table("users").select("*").eq("id", uid).execute()
-        return res.data[0] if res.data else None
-    except: return None
+# --- 3. DATABASE LOGIC ---
+def sync_user(uid):
+    res = supabase.table("users").select("*").eq("id", uid).execute()
+    return res.data[0] if res.data else None
 
-def save_user_state(uid, data):
+def save_user(uid, data):
     supabase.table("users").upsert({
         "id": uid,
-        "auth": True,
         "traits": data.get("traits", []),
-        "chat_history": data.get("chat_history", [])
+        "chat_history": data.get("chat_history", []),
+        "auth": True
     }).execute()
 
-# --- 4. УПРАВЛЕНИЕ СЕССИЕЙ ---
-if "user_state" not in st.session_state:
-    st.session_state.user_state = None
+# --- 4. SESSION MANAGEMENT ---
+if "session_user" not in st.session_state:
+    st.session_state.session_user = None
 
-# --- ЭКРАН 1: АВТОРИЗАЦИЯ (С ФОНОМ ИЗ СЕТИ) ---
-if st.session_state.user_state is None:
-    # Применяем фон для экрана входа
-    st.markdown(f"""
-        <style>
-        .stApp {{
-            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url("{BG_AUTH}");
-            background-size: cover;
-            background-position: center;
-        }}
-        </style>
-    """, unsafe_allow_html=True)
-
-    _, col, _ = st.columns([1, 1.2, 1])
+# ЭКРАН ВХОДА (Если сессия пуста)
+if st.session_state.session_user is None:
+    _, col, _ = st.columns([1, 1, 1])
     with col:
         st.markdown("<div style='height: 15vh'></div>", unsafe_allow_html=True)
-        # Умная проверка логотипа
-        if os.path.exists(LOGO_FILE):
-            st.image(LOGO_FILE, use_column_width=True)
-        else:
-            # Стилизованный заголовок, если лого пока нет
-            st.markdown("<h1 style='font-family: Cinzel; text-align: center; letter-spacing: 10px; color: #FFFFFF;'>LUVVU</h1>", unsafe_allow_html=True)
+        st.image(LOGO_PATH, use_container_width=True)
+        st.markdown(f"<h1 style='text-align: center; font-family: Cinzel; color: {text};'>LUVVU</h1>", unsafe_allow_html=True)
         
-        st.markdown("<center style='color: #EEEEEE; margin-bottom: 20px;'>Ecosystem for Growth</center>", unsafe_allow_html=True)
+        entry_id = st.text_input("ID FOUNDER").strip().lower()
+        entry_key = st.text_input("SECURITY KEY", type="password")
         
-        u = st.text_input("ID Основателя").strip().lower()
-        p = st.text_input("Secure Pass", type="password")
-        
-        if st.button("AUTHENTICATE", use_container_width=True):
-            if u == st.secrets["LOGIN_USER"].lower() and p == st.secrets["LOGIN_PASSWORD"]:
-                data = fetch_user_state(u)
+        if st.button("AUTHORIZE"):
+            if entry_id == st.secrets["LOGIN_USER"].lower() and entry_key == st.secrets["LOGIN_PASSWORD"]:
+                data = sync_user(entry_id)
                 if not data:
-                    data = {"id": u, "traits": [], "chat_history": []}
-                    save_user_state(u, data)
-                st.session_state.user_state = data
+                    data = {"id": entry_id, "traits": [], "chat_history": []}
+                    save_user(entry_id, data)
+                st.session_state.session_user = data
                 st.rerun()
             else:
-                st.error("Access Denied.")
+                st.error("Доступ отклонен.")
     st.stop()
 
-# --- ЭКРАН 2: ЧАТ (С ФОНОМ ИЗ СЕТИ + ПАМЯТЬ) ---
-user = st.session_state.user_state
+# --- 5. MAIN TERMINAL (AUTHENTICATED) ---
+user = st.session_state.session_user
 
-# Применяем фон для чата (Темный, для читаемости баблов)
-st.markdown(f"""
-    <style>
-    .stApp {{
-        background: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url("{BG_CHAT}");
-        background-size: cover;
-        background-position: center;
-    }}
-    h1, h2, h3 {{ color: #FFFFFF !important; }}
-    </style>
-""", unsafe_allow_html=True)
-
-# Сайдбар (Профиль & Networking)
+# Панель управления (Сайдбар)
 with st.sidebar:
-    if os.path.exists(LOGO_FILE): st.image(LOGO_FILE)
-    st.markdown(f"<h2 style='font-family: Cinzel; text-align: center; color: #1a1a1a !important;'>{user['id'].upper()}</h2>", unsafe_allow_html=True)
+    st.image(LOGO_PATH, width=100)
+    st.markdown(f"<h2 style='font-family: Cinzel;'>{user['id'].upper()}</h2>", unsafe_allow_html=True)
     st.markdown("---")
-    st.write("🎯 **Твои теги (Networking):**")
+    st.write("🎯 **NETWORKING TRAITS:**")
     if user["traits"]:
-        traits_list = ", ".join(user["traits"])
-        st.info(f"`{traits_list.upper()}`")
+        for t in user["traits"]:
+            st.markdown(f"• `{t.upper()}`")
     else:
-        st.caption("Ожидание данных...")
+        st.caption("Анализирую твой путь...")
     
     st.markdown("---")
-    if st.button("TERMINATE SESSION"):
-        st.session_state.user_state = None
+    if st.button("TERMINATE"):
+        st.session_state.session_user = None
         st.rerun()
 
 # Чат-интерфейс
-st.markdown("<h3 style='font-family: Cinzel; letter-spacing: 3px;'>Luvvu / Companion</h3>", unsafe_allow_html=True)
+st.markdown(f"<h3 style='font-family: Cinzel; border-bottom: 1px solid {text}; padding-bottom: 10px;'>Luvvu / Ecosystem</h3>", unsafe_allow_html=True)
 
-# Отображение истории чата (из Supabase)
-for m in user["chat_history"]:
-    with st.chat_message(m["role"]):
-        st.markdown(f"<div style='font-family: Montserrat; font-weight: 300;'>{m['content']}</div>", unsafe_allow_html=True)
+# Вывод истории из Supabase
+for msg in user["chat_history"]:
+    with st.chat_message(msg["role"]):
+        st.markdown(f"<div style='font-family: Inter; font-weight: 300;'>{msg['content']}</div>", unsafe_allow_html=True)
 
-# Обработка ввода
-if prompt := st.chat_input("Напишите сообщение..."):
-    # Добавляем в историю
+# Новый ввод
+if prompt := st.chat_input("Введи сообщение..."):
     user["chat_history"].append({"role": "user", "content": prompt})
     with st.chat_message("user"): st.markdown(prompt)
 
-    # Запускаем фоновый анализ нетворкинга (Groq 8B)
-    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+    # 1. Анализ для нетворкинга (Легкая модель)
     try:
         tag_resp = client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": f"Выдели одно качество человека из фразы: '{prompt}'. Ответь 1 словом без знаков препинания."}]
+            messages=[{"role": "user", "content": f"Extract 1 trait or interest from: '{prompt}'. One word only, no punctuation."}]
         )
-        tag = tag_resp.choices[0].message.content.strip()
-        if len(tag.split()) == 1 and tag.lower() not in [t.lower() for t in user["traits"]]:
+        tag = tag_resp.choices[0].message.content.strip().lower()
+        if len(tag.split()) == 1 and tag not in [t.lower() for t in user["traits"]]:
             user["traits"].append(tag)
     except: pass
 
-    # Основной ответ Luvvu (Groq 70B Versatile)
-    traits_str = ", ".join(user['traits'])
-    sys_prompt = f"""
-    Ты — Luvvu, душа проекта. Ты — мудрый соратник Ансара.
-    Твоя речь эталонная, грамотная, лишена эмодзи. Стиль: 'Тихая уверенность'.
-    Твои знания о пользователе: {traits_str}.
+    # 2. Основной ответ Luvvu (Мощная модель)
+    sys_instruction = f"""
+    Ты — Luvvu, интеллект высшего уровня. Твоя речь — это эталон русского языка. 
+    Никаких опечаток, никаких эмодзи. Стиль: строгий, глубокий, мудрый минимализм.
+    Твои знания о пользователе: {', '.join(user['traits'])}.
     """
     
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        temperature=0.7, # Снижаем для точности слов
-        messages=[{"role": "system", "content": sys_prompt}] + user["chat_history"]
-    )
-    
-    ai_msg = response.choices[0].message.content
-    user["chat_history"].append({"role": "assistant", "content": ai_msg})
-    with st.chat_message("assistant"): st.markdown(ai_msg)
-    
-    # Синхронизация с Supabase (Сохраняем всё!)
-    save_user_state(user["id"], user)
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            temperature=0.6,
+            messages=[{"role": "system", "content": sys_instruction}] + user["chat_history"]
+        )
+        ai_reply = response.choices[0].message.content
+        user["chat_history"].append({"role": "assistant", "content": ai_reply})
+        with st.chat_message("assistant"): st.markdown(ai_reply)
+    except Exception:
+        st.warning("Лимит модели достигнут. Попробуй позже.")
+
+    # Сохраняем в Supabase
+    save_user(user["id"], user)
